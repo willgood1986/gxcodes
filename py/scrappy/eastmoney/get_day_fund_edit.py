@@ -1,8 +1,4 @@
-﻿ # try except Exception as e in Python3
- # @staticmethod we still use the classname explicitely
- # with open('filename', 'w+') as f to write file
-
-import urllib
+﻿import urllib
 import requests
 import re
 from bs4 import BeautifulSoup  
@@ -10,6 +6,31 @@ import gzip
 import sys
 import json
 
+
+class HelpUtil:
+    @staticmethod
+    def wash_data(_pure_data):
+        mid_str = _pure_data
+        while mid_str.find(",,") > 0:
+            mid_str = mid_str.replace(",,", ",666666,", 1)
+
+        return mid_str
+
+    @staticmethod    
+    def get_raw_json_content(json_data):
+        start_str = 'kfdatas:'
+        end_str = ',fbdatas'
+
+        start_index = json_data.find(start_str)
+        end_index = json_data.find(end_str)
+
+        print('start_index:{}, end_index:{}'.format(start_index, end_index))
+
+        if min([start_index, end_index]) > 0:
+            pure_data = json_data[start_index + len(start_str):end_index]
+            return pure_data
+
+        return None
 
 class FundData:
     def __init__(self, src_data, is_file = False):
@@ -36,6 +57,82 @@ class FundData:
             return self.raw_content
         else:
             return None
+
+    # @staticmethod
+    # def wash_data(_pure_data):
+    #     mid_str = _pure_data
+    #     while mid_str.find(",,") > 0:
+    #         mid_str = mid_str.replace(",,", ",666666,", 1)
+
+    #     return mid_str
+
+    # @staticmethod    
+    # def __get_raw_json_content(json_data):
+    #     start_str = 'kfdatas:'
+    #     end_str = ',fbdatas'
+
+    #     start_index = json_data.find(start_str)
+    #     end_index = json_data.find(end_str)
+
+    #     print('start_index:{}, end_index:{}'.format(start_index, end_index))
+
+    #     if min([start_index, end_index]) > 0:
+    #         pure_data = json_data[start_index + len(start_str):end_index]
+    #         return pure_data
+
+    #     return None
+
+
+    def __parse_data(self):
+        self.is_parsed = True
+        raw_content = self.__get_raw_content()
+        if raw_content:
+            raw_json_content = HelpUtil.get_raw_json_content(raw_content)
+            if raw_json_content:
+                washed_data = HelpUtil.wash_data(raw_json_content)
+                self.try_to_load(washed_data)
+        else:
+            print('Failed to get raw_content ...')
+
+    def try_to_load(self, json_data):
+        try:
+            self.fund_lst = json.loads(json_data)
+            print('Load json format data successfully, the length is:{}'.format(len(self.fund_lst )))
+        except Exception as e:
+            print('Faile to load json data ..., source data is:{}'.format(json_data))
+
+    def get_struct_data(self):
+        if not self.is_parsed:
+            self.__parse_data()
+
+        return self.fund_lst
+
+class UpRateData:
+    def __init__(self, src_data, is_file = False):
+        self.src_data = src_data
+        self.is_file = is_file
+        self.fund_lst = []
+        self.is_parsed = False
+
+    def get_content_from_file(self):
+        try:
+            with open(self.src_data) as f:
+                file_content = f.read()
+                return file_content
+        except Exception as e:
+            print('Unable to open the file, please check the argument of src_data ...')
+
+    def __get_raw_content(self):
+        fixed_header = 'var dbCache='
+        self.raw_content = self.src_data
+        if self.is_file:
+           self.raw_content = self.get_content_from_file()
+
+        if len(self.raw_content) > 0:
+            return self.raw_content
+        else:
+            return None
+
     @staticmethod
     def wash_data(_pure_data):
         mid_str = _pure_data
@@ -65,9 +162,9 @@ class FundData:
         self.is_parsed = True
         raw_content = self.__get_raw_content()
         if raw_content:
-            raw_json_content = FundData.__get_raw_json_content(raw_content)
+            raw_json_content = HelpUtil.get_raw_json_content(raw_content)
             if raw_json_content:
-                washed_data = FundData.wash_data(raw_json_content)
+                washed_data = HelpUtil.wash_data(raw_json_content)
                 self.try_to_load(washed_data)
         else:
             print('Failed to get raw_content ...')
@@ -108,15 +205,17 @@ common_headers = {
 def login_ex(_data):
     s = requests.session()
     after_url = 'http://fund.eastmoney.com/Data/FavorCenter_v3.aspx?o=r&rnd=1523713075514'
+    up_info_url = 'http://fund.eastmoney.com/Data/FavorCenter_v3.aspx?o=r&rnd=1523885446559'
     login_url = 'http://exaccount2.eastmoney.com/JsonAPI/Login'
     login_ret = s.post(login_url, data=_data, headers=common_headers)
     if login_ret.status_code == 200:
         ret = s.get(after_url)
+        ret_up = s.get(up_info_url)
     else:
         print('Failed to login ...')
         return None
     # print('Is it the data:{}'.format(ret.text))
-    _content = ret.text
+    _content = (ret.text, ret_up.text)
 
     return _content
 
@@ -153,8 +252,8 @@ def __wash_data(raw_data, place_holder = -9999):
 
 def main():
     login_data = {
-        'username': 'username',
-        'password': 'password',
+        'username': '13926991859',
+        'password': '547583658',
         'vcode': '',
         'x': 794,
         'y': 430
@@ -163,32 +262,13 @@ def main():
     _head = 'var dbCache='
 
     _content = login_ex(login_data)
-    fd = FundData(_content)
+    fd = FundData(_content[0])
+    urd = UpRateData(_content[1])
+    # print('up info:{}'.format(_content[1]))
     ret = fd.get_struct_data()
-    print('The struct data is:{}'.format(ret))
-  
-def test_json():
-    lst = [[-0.4326,-5.4523,-4.9643,'null','null','null','null','null',-1.9841,1.27],]
-
-    try:
-        dumps_str = json.dumps(lst)
-        # print(json.dumps(lst))
-        print(type(json.loads(dumps_str)))
-    except Exception as e:
-        print('The exception message is:{}'.format(e))
-
-def test_json_str(json_str):
-    load_ret = None
-
-    try:
-        load_ret = json.loads(json_str)
-        print(type(load_ret))
-    except Exception as e:
-        print('The exception message is:{}'.format(e))
-
-    print(load_ret)
-
+    ur_ret = urd.get_struct_data()
+    print('The struct data is, unit_net_val:{}, culculating_val:{}, day_up_rate:{}'.format(ret[1][18], ret[1][19], ret[1][23]))
+    print('The struct data is, day_up_rate:{}'.format(ur_ret[1][-8]))  
 
 if __name__ == '__main__':
     main()
-
